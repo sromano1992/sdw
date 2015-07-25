@@ -1,0 +1,14 @@
+INDEX VERSION 1.126+C:\Users\Simone\Documents\Smartwatch_Project\software\android\.metadata\.plugins\org.eclipse.jdt.core
+2756837305.index
+654937959.index
+1873211651.index
+4165919758.index
+3609832709.index
+3241303241.index
+3011359483.index
+1660182005.index
+1284074322.index
+2501985457.index
+3036011512.index
+2944381369.index
+1436875681.index

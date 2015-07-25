@@ -1,0 +1,11 @@
+package com.wpsw.main;
+
+interface ITelephony {
+
+	boolean endCall();
+
+	void answerRingingCall();
+
+	void silenceRinger();
+
+}

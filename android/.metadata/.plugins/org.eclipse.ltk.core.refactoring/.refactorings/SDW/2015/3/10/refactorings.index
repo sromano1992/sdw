@@ -1,0 +1,3 @@
+1425554670099	Extract method 'getLocation'
+1425555248434	Extract method 'checkGps'
+1425555295581	Extract method 'requestToEnableGps'

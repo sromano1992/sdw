@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Copy element &apos;R.java&apos; to &apos;SDW/gen/com.wpsw.main&apos;&#x0D;&#x0A;- Original project: &apos;Test&apos;&#x0D;&#x0A;- Destination element: &apos;SDW/gen/com.wpsw.main&apos;&#x0D;&#x0A;- Original element: &apos;com.example.test.R.java&apos;" description="Copy compilation unit" destination="=SDW/gen&lt;com.wpsw.main" element1="/gen&lt;com.example.test{R.java" files="0" flags="589830" folders="0" id="org.eclipse.jdt.ui.copy" policy="org.eclipse.jdt.ui.copyResources" stamp="1426140867114" units="1" version="1.0"/>
+</session>

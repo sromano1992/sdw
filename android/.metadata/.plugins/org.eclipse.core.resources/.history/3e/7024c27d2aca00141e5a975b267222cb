@@ -1,0 +1,65 @@
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent" >
+
+    <EditText
+        android:id="@+id/name"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentLeft="true"
+        android:layout_marginTop="14dp"
+        android:ems="10"
+        android:hint="Insert your name" >
+
+        <requestFocus />
+    </EditText>
+
+    <Button
+        android:id="@+id/FlashOff"
+        style="?android:attr/buttonStyleSmall"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/name"
+        android:layout_centerHorizontal="true"
+        android:text="Flash OFF" />
+
+    <Button
+        android:id="@+id/FlashOn"
+        style="?android:attr/buttonStyleSmall"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentLeft="true"
+        android:layout_below="@+id/name"
+        android:text="Flash ON" />
+
+    <Button
+        android:id="@+id/buttonHome"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentLeft="true"
+        android:layout_below="@+id/FlashOn"
+        android:layout_marginTop="18dp"
+        android:text="Home" />
+
+    <SeekBar
+        android:id="@+id/seekBarBacklight"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentLeft="true"
+        android:layout_below="@+id/buttonHome"
+        android:layout_marginTop="21dp"
+        android:max="255"
+        android:progress="220" />
+
+    <TextView
+        android:id="@+id/textView1"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentRight="true"
+        android:layout_below="@+id/buttonHome"
+        android:layout_marginRight="42dp"
+        android:text="Backlight value"
+        android:textAppearance="?android:attr/textAppearanceLarge" />
+
+</RelativeLayout>

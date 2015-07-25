@@ -1,0 +1,516 @@
+/**
+ * @author Simone Romano - www.sromano.altervista.org
+ * 11/02/2015
+ */
+
+package com.sdw.main;
+
+import java.io.IOException;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.UUID;
+
+import com.sdw.main.MyAccessibilityService.Constants;
+import com.wpsw.main.R;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.Dialog;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothSocket;
+import android.content.BroadcastReceiver;
+import android.content.ContentResolver;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.database.Cursor;
+import android.graphics.Color;
+import android.location.Address;
+import android.location.Geocoder;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.provider.ContactsContract;
+import android.provider.ContactsContract.PhoneLookup;
+import android.telephony.PhoneStateListener;
+import android.telephony.TelephonyManager;
+import android.util.Log;
+import android.view.KeyEvent;
+import android.view.View;
+import android.view.View.OnClickListener;
+import android.widget.Button;
+import android.widget.SeekBar;
+import android.widget.SeekBar.OnSeekBarChangeListener;
+import android.widget.TextView;
+
+public class MainActivity extends Activity implements OnSeekBarChangeListener{
+	private static final String TAG = "SDW";
+	private static boolean CONNECTION_ON = false;
+	private Button buttonFlashOn, buttonFlashOff, buttonHome;
+	private TextView name, connectionStatus;
+	private SeekBar backLightSeekBar;
+	private Handler h;
+	final int RECIEVE_MESSAGE = 1; // Status for Handler
+	private BluetoothAdapter btAdapter = null;
+	private BluetoothSocket btSocket = null;
+	private StringBuilder sb = new StringBuilder();
+	private BluetoothInfoThread myBluetoothInfoThread;
+	private ConnectedThread mConnectedThread;
+	private Location location;
+	private Settings mySetting;
+	// SPP UUID service
+	private static final UUID MY_UUID = UUID
+			.fromString("00001101-0000-1000-8000-00805F9B34FB");
+	// MAC-address of Bluetooth module (you must edit this line)
+	private static String address = "20:14:03:24:50:32";
+	/** Called when the activity is first created. */
+	@Override
+	public void onCreate(Bundle savedInstanceState) {
+		super.onCreate(savedInstanceState);
+
+		setContentView(R.layout.activity_main);
+
+		h = new Handler() {
+			public void handleMessage(android.os.Message msg) {
+				switch (msg.what) {
+				case RECIEVE_MESSAGE: // if receive massage
+					byte[] readBuf = (byte[]) msg.obj;
+					String strIncom = new String(readBuf, 0, msg.arg1); // create
+																		// string
+																		// from
+																		// bytes
+																		// array
+					sb.append(strIncom); // append string
+					int endOfLineIndex = sb.indexOf("_"); // determine the
+															// end-of-line
+					if (endOfLineIndex > 0) { // if end-of-line,
+						String sbprint = sb.substring(0, endOfLineIndex); // extract
+																			// string
+						sb.delete(0, sb.length()); // and clear
+					}
+					break;
+				}
+			};
+		};
+
+		btAdapter = BluetoothAdapter.getDefaultAdapter(); // get Bluetooth adapter
+		checkBTState();
+		name = (TextView) findViewById(R.id.name);
+		connectionStatus = (TextView) findViewById(R.id.connectionStatus);
+		connectionStatus.setTextColor(Color.RED);
+		connectToDevice();	//create mConnectedThread
+		
+		// call manager
+		TelephonyManager TelephonyMgr = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
+		TelephonyMgr.listen(new TeleListener(getContentResolver(), myBluetoothInfoThread, getIntent()),PhoneStateListener.LISTEN_CALL_STATE);
+		//periodical info manager
+		MySQLiteHelper db = new MySQLiteHelper(this);
+		myBluetoothInfoThread = new BluetoothInfoThread(mConnectedThread, name, TelephonyMgr, getApplicationContext(), getBaseContext(), this);
+		myBluetoothInfoThread.setDbHelper(db);
+		//database manager
+		List<Settings> allSettings = db.getAllSettings();
+		if(allSettings.size() != 0){
+			mySetting = allSettings.get(0);
+			myBluetoothInfoThread.setBacklight(mySetting.getBacklightValue());
+			myBluetoothInfoThread.setName(mySetting.getName());
+			myBluetoothInfoThread.setSettings(mySetting);
+			name.setText(mySetting.getName());
+		}
+		myBluetoothInfoThread.start();
+		//notifications
+		final IntentFilter mIntentFilter = new IntentFilter(Constants.ACTION_CATCH_NOTIFICATION); 
+        mIntentFilter.addAction(Constants.ACTION_CATCH_TOAST);
+        registerReceiver(toastOrNotificationCatcherReceiver, mIntentFilter);
+		//flash button
+		buttonFlashOff = (Button) findViewById(R.id.FlashOff);
+		buttonFlashOn = (Button) findViewById(R.id.FlashOn);
+		checkGps(true);
+		//
+		buttonHome = (Button) findViewById(R.id.buttonHome);
+		backLightSeekBar = (SeekBar) findViewById(R.id.seekBarBacklight);
+		if(mySetting != null)
+			backLightSeekBar.setProgress(mySetting.getBacklightValue());
+		backLightSeekBar.setOnSeekBarChangeListener(this);
+		myBluetoothInfoThread.setBacklight(backLightSeekBar.getProgress());
+		buttonFlashOff.setOnClickListener(new OnClickListener() {			
+			@Override
+			public void onClick(View v) {
+				myBluetoothInfoThread.turnOffFlash();
+			}
+		});
+		buttonFlashOn.setOnClickListener(new OnClickListener() {
+			@Override
+			public void onClick(View v) {	
+				myBluetoothInfoThread.turnOnFlash();;				
+			}
+		});
+		buttonHome.setOnClickListener(new OnClickListener() {
+			@Override
+			public void onClick(View v) {
+				myBluetoothInfoThread.printHome();				
+			}
+		});
+	}
+
+	public void checkGps(boolean reqIfDisabled) {
+		//location
+		LocationManager locationManager = (LocationManager)	getSystemService(Context.LOCATION_SERVICE);
+		LocationListener locationListener = new MyLocationListener();
+		locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 5000, 10, locationListener);
+		boolean network_enabled = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);	
+		if(network_enabled){			
+			getLocation(locationManager);
+		}
+		else{
+			if(reqIfDisabled){
+				if(!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+				      !locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+				  requestToEnableGps();
+				}
+			}
+		}
+	}
+
+	private void requestToEnableGps() {
+		// Build the alert dialog
+		  AlertDialog.Builder builder = new AlertDialog.Builder(this);
+		  builder.setTitle("Location Services Not Active");
+		  builder.setMessage("Please enable Location Services and GPS");
+		  builder.setPositiveButton("OK", new DialogInterface.OnClickListener() {
+		  public void onClick(DialogInterface dialogInterface, int i) {
+		    // Show location settings when the user acknowledges the alert dialog
+		    Intent intent = new Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+		    startActivity(intent);
+		    }
+		  });
+		  Dialog alertDialog = builder.create();
+		  alertDialog.setCanceledOnTouchOutside(false);
+		  alertDialog.show();
+	}
+
+	public void getLocation(LocationManager locationManager) {
+		location = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+		Geocoder gcd = new Geocoder(getBaseContext(), Locale.getDefault());
+		List<Address> addresses;
+		try {
+		    addresses = gcd.getFromLocation(location.getLatitude(),
+		    		location.getLongitude(), 1);
+		    if (addresses.size() > 0)
+		        System.out.println(addresses.get(0).getLocality());
+		    myBluetoothInfoThread.setCity(addresses.get(0).getLocality());
+		}
+		catch(Exception e){
+			e.printStackTrace();
+		}
+	}
+
+	private BluetoothSocket createBluetoothSocket(BluetoothDevice device) throws IOException {
+		if (Build.VERSION.SDK_INT >= 10) {
+			try {
+				final Method m = device.getClass().getMethod("createInsecureRfcommSocketToServiceRecord",
+						new Class[] { UUID.class });
+				return (BluetoothSocket) m.invoke(device, MY_UUID);
+			} catch (Exception e) {
+				Log.e(TAG, "Could not create Insecure RFComm Connection", e);
+			}
+		}
+		return device.createRfcommSocketToServiceRecord(MY_UUID);
+	}
+
+	@Override
+	public void onResume() {
+		super.onResume();
+		
+		Log.d(TAG, "...onResume - try connect...");
+
+		//connectToDevice();
+	}
+
+	public boolean onKeyDown(int keyCode, KeyEvent event)  
+    {
+         if (keyCode == KeyEvent.KEYCODE_BACK && event.getRepeatCount() == 0)
+         {
+            this.moveTaskToBack(true);
+            return true;
+         }
+        return super.onKeyDown(keyCode, event);
+    }
+	
+	public boolean connectToDevice() {
+		// Set up a pointer to the remote node using it's address.
+		BluetoothDevice device = btAdapter.getRemoteDevice(address);
+
+		// Two things are needed to make a connection:
+		// A MAC address, which we got above.
+		// A Service ID or UUID. In this case we are using the
+		// UUID for SPP.
+		//if(btSocket == null){
+			try {
+				btSocket = createBluetoothSocket(device);
+			} catch (IOException e) {
+				errorExit("Fatal Error", "In onResume() and socket create failed: "
+						+ e.getMessage() + ".");
+				updateGuiConnectionInfo(false);
+				return false;
+			}
+	
+			/*
+			 * try { btSocket = device.createRfcommSocketToServiceRecord(MY_UUID); }
+			 * catch (IOException e) { errorExit("Fatal Error",
+			 * "In onResume() and socket create failed: " + e.getMessage() + "."); }
+			 */
+	
+			// Discovery is resource intensive. Make sure it isn't going on
+			// when you attempt to connect and pass your message.
+			btAdapter.cancelDiscovery();
+	
+			// Establish the connection. This will block until it connects.
+			Log.d(TAG, "...Connecting...");
+			try {
+				btSocket.connect();
+				Log.d(TAG, "....Connection ok...");
+			} catch (IOException e) {
+				try {
+					btSocket.close();
+					updateGuiConnectionInfo(false);
+					return false;
+				} catch (IOException e2) {
+					errorExit("Fatal Error",
+							"In onResume() and unable to close socket during connection failure"
+									+ e2.getMessage() + ".");
+					updateGuiConnectionInfo(false);
+					return false;
+				}
+			}
+			
+			// Create a data stream so we can talk to server.
+			Log.d(TAG, "...Create Socket...");
+			mConnectedThread = new ConnectedThread(btSocket, h);
+			mConnectedThread.start();
+			
+			if(myBluetoothInfoThread != null)
+				myBluetoothInfoThread.set_mConnectedThread(mConnectedThread);
+			Log.i("Connection", "OK");
+			updateGuiConnectionInfo(true);
+			return true;
+		//}
+	}
+
+	private void updateGuiConnectionInfo(boolean connected) {
+		if(!connected){
+			new Thread(new Runnable() {			
+				@Override
+				public void run() {
+					CONNECTION_ON = false;
+					connectionStatus.setText("Disconnected");
+					connectionStatus.setTextColor(Color.RED);
+				}
+			}).start();
+		}
+		else{
+			new Thread(new Runnable() {			
+				@Override
+				public void run() {
+					CONNECTION_ON = true;
+					connectionStatus.setText("Connected");
+					connectionStatus.setTextColor(Color.GREEN);
+				}
+			}).start();;
+		}		
+	}
+
+	@Override
+	public void onPause() {
+		super.onPause();
+
+		Log.d(TAG, "...In onPause()...");
+
+		/*try {
+			btSocket.close();
+		} catch (IOException e2) {
+			errorExit("Fatal Error", "In onPause() and failed to close socket."
+					+ e2.getMessage() + ".");
+		}*/
+	}
+	
+	protected void onDestroy() {
+        super.onDestroy();
+        unregisterReceiver(toastOrNotificationCatcherReceiver);
+    }
+	
+	private void checkBTState() {
+		// Check for Bluetooth support and then check to make sure it is turned
+		// on
+		// Emulator doesn't support Bluetooth and will return null
+		if (btAdapter == null) {
+			errorExit("Fatal Error", "Bluetooth not support");
+		} else {
+			if (btAdapter.isEnabled()) {
+				Log.d(TAG, "...Bluetooth ON...");
+			} else {
+				// Prompt user to turn on Bluetooth
+				Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+				startActivityForResult(enableBtIntent, 1);
+			}
+		}
+	}
+
+	private void errorExit(String title, String message) {
+		/*Toast.makeText(getBaseContext(), title + " - " + message,
+				Toast.LENGTH_LONG).show();*/
+		finish();
+	}
+
+	class TeleListener extends PhoneStateListener {
+		private static final long TIME_TO_RETRY_CONNECTION = 20000;
+		private ContentResolver myContentResolver;
+		private BluetoothInfoThread myBluetoothInfothread;
+		private Intent mIntent;
+		
+		public TeleListener(ContentResolver contentResolver, BluetoothInfoThread myClockDateThread, Intent mIntent) {
+			this.myContentResolver = contentResolver;
+			this.myBluetoothInfothread = myClockDateThread;
+			this.mIntent = mIntent;
+		}
+
+		public void onCallStateChanged(int state, String incomingNumber) {
+			super.onCallStateChanged(state, incomingNumber);
+			
+			switch (state) {
+			case TelephonyManager.CALL_STATE_IDLE:
+				// CALL_STATE_IDLE;
+				/*Toast.makeText(getApplicationContext(), "CALL_STATE_IDLE",
+						Toast.LENGTH_LONG).show();*/
+				break;
+			case TelephonyManager.CALL_STATE_OFFHOOK:
+				// CALL_STATE_OFFHOOK;
+				String dialingNumber = mIntent.getStringExtra(Intent.EXTRA_PHONE_NUMBER);
+				//Toast.makeText(getApplicationContext(), "CALL_STATE_OFFHOOK", Toast.LENGTH_LONG).show();
+				//myBluetoothInfothread.printCallInfo(handleCall(dialingNumber), dialingNumber);
+				break;
+			case TelephonyManager.CALL_STATE_RINGING:
+				while(BluetoothInfoThread.IN_LOOP == true){}
+				try {
+					mConnectedThread.write("C;" + handleCall(incomingNumber) + ";" + incomingNumber + "_");
+				} catch (Exception e) {
+					reconnecting();
+					e.printStackTrace();
+				}				
+				break;
+			default:
+				break;
+			}
+		}
+
+		private void reconnecting() {
+			while(connectToDevice() == false){
+				Log.i("CONNECTING", "trying to connect...");
+			}			
+		}
+
+		public String handleCall(String incomingCall) {
+			String contactName = "Unknown";
+			Uri uri = Uri.withAppendedPath(PhoneLookup.CONTENT_FILTER_URI, Uri.encode(incomingCall));
+			Cursor cursor = myContentResolver.query(uri, new String[]{PhoneLookup.DISPLAY_NAME}, null, null, null);
+			if (cursor.moveToFirst()) {
+	            contactName = cursor.getString(cursor
+	                    .getColumnIndex(ContactsContract.PhoneLookup.DISPLAY_NAME));
+	        }
+	        cursor.close();
+	        return contactName;
+		}
+	}
+
+	@Override
+	public void onProgressChanged(SeekBar seekBar, int progress,
+			boolean fromUser) {
+		myBluetoothInfoThread.setBacklight(progress);
+	}
+
+	@Override
+	public void onStartTrackingTouch(SeekBar seekBar) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void onStopTrackingTouch(SeekBar seekBar) {
+		// TODO Auto-generated method stub
+		
+	}
+	
+	private final BroadcastReceiver toastOrNotificationCatcherReceiver = new BroadcastReceiver() {
+        
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            Log.v(TAG, "Received message"); 
+            Log.v(TAG, "intent.getAction() :: " + intent.getAction());
+            Log.v(TAG, "intent.getStringExtra(Constants.EXTRA_PACKAGE) :: " + intent.getStringExtra(Constants.EXTRA_PACKAGE));
+            Log.v(TAG, "intent.getStringExtra(Constants.EXTRA_MESSAGE) :: " + intent.getStringExtra(Constants.EXTRA_MESSAGE));    
+            ArrayList<Message> actualMessage_s = BluetoothInfoThread.getMyMessage();
+            if(actualMessage_s.size() == 0){
+            	actualMessage_s.add(new Message(intent.getStringExtra(Constants.EXTRA_PACKAGE), intent.getStringExtra(Constants.EXTRA_MESSAGE)));
+            	BluetoothInfoThread.setMyMessage(actualMessage_s);
+            	actualMessage_s.add(new Message("", ""));
+            }
+            else{
+            	actualMessage_s.get(1).setDestInfo(actualMessage_s.get(0).getDestInfo());
+            	actualMessage_s.get(1).setPackageInfo(actualMessage_s.get(0).getPackageInfo());
+            	actualMessage_s.get(0).setPackageInfo(intent.getStringExtra(Constants.EXTRA_PACKAGE));
+            	actualMessage_s.get(0).setDestInfo(intent.getStringExtra(Constants.EXTRA_MESSAGE));
+            	BluetoothInfoThread.setMyMessage(actualMessage_s);
+            }
+        }
+    };
+
+    private class MyLocationListener implements LocationListener {
+
+        @Override
+        public void onLocationChanged(Location loc) {
+            /*Toast.makeText(
+                    getBaseContext(),
+                    "Location changed: Lat: " + loc.getLatitude() + " Lng: "
+                        + loc.getLongitude(), Toast.LENGTH_SHORT).show();*/
+            String longitude = "Longitude: " + loc.getLongitude();
+            //Log.v(TAG, longitude);
+            String latitude = "Latitude: " + loc.getLatitude();
+            //Log.v(TAG, latitude);
+
+            /*------- To get city name from coordinates -------- */
+            String cityName = null;
+            Geocoder gcd = new Geocoder(getBaseContext(), Locale.getDefault());
+            List<Address> addresses;
+            try {
+                addresses = gcd.getFromLocation(loc.getLatitude(),
+                        loc.getLongitude(), 1);
+                if (addresses.size() > 0)
+                    System.out.println(addresses.get(0).getLocality());
+                cityName = addresses.get(0).getLocality();
+            }
+            catch (IOException e) {
+                e.printStackTrace();
+            }
+            String s = longitude + "\n" + latitude + "\n\nMy Current City is: "
+                + cityName;
+            //Log.i("GPS", s);
+            myBluetoothInfoThread.setCity(cityName);
+        }
+
+        @Override
+        public void onProviderDisabled(String provider) {}
+
+        @Override
+        public void onProviderEnabled(String provider) {}
+
+        @Override
+        public void onStatusChanged(String provider, int status, Bundle extras) {}
+    }
+}

@@ -1,0 +1,223 @@
+package com.wpsw.main;
+
+import java.util.ArrayList;
+import java.util.Calendar;
+
+import android.telephony.TelephonyManager;
+import android.widget.TextView;
+
+public class BluetoothInfoThread extends Thread {
+	private static final long LOOP_OFF_TIME = 500;
+	private int INTERVAL = 30000;
+	private ConnectedThread mConnectedThread;
+	private String city, name = "---", operatorName = "---";
+	private int backlight = 255;
+	private TextView textViewName;
+	private static boolean LOOP_ON;
+	public static boolean IN_LOOP;
+	private TelephonyManager telephonyManager;
+	private MySQLiteHelper db;
+	private Settings mySetting;
+	private static ArrayList<Message> myMessage;
+	private static boolean UPDATE_NOTIFICATION;
+	private MainActivity mainActivity;
+	
+	public BluetoothInfoThread(ConnectedThread mConnectedThread, TextView textViewName, TelephonyManager telephonyMgr, MainActivity mainActivity) {
+		super();
+		myMessage = new ArrayList<Message>();
+		this.mConnectedThread = mConnectedThread;
+		this.textViewName = textViewName;
+		telephonyManager = telephonyMgr;
+		LOOP_ON = true;
+		this.mainActivity = mainActivity;
+	}
+
+	public void run(){
+		while(true){
+			if(LOOP_ON){
+				IN_LOOP = true;
+				Calendar c = Calendar.getInstance(); 
+				int hours = c.get(Calendar.HOUR_OF_DAY);
+				int minutes = c.get(Calendar.MINUTE);
+				String minAsString = minutes + "";
+				if(minutes < 10)
+					minAsString = "0" + minAsString;			
+				int seconds = c.get(Calendar.SECOND);
+				int day = c.get(Calendar.DAY_OF_MONTH);
+				int month = c.get(Calendar.MONTH)+1;
+				int year = c.get(Calendar.YEAR);
+				int dayOfWeek = c.get(Calendar.DAY_OF_WEEK);
+				
+				mainActivity.checkGps(false);
+				String cityToPrint = city;
+				if(cityToPrint == null)
+					cityToPrint = "NO GPS";
+				if(!textViewName.getText().equals(""))
+					name = textViewName.getText().toString();
+				if(mySetting != null){
+					if(!name.equals(mySetting.getName())){
+						mySetting.setName(name);
+						db.updateSettings(mySetting);
+					}
+				}
+				else{
+					mySetting = new Settings(backlight, name);
+					db.addSettingsRow(name, backlight);
+				}
+				String dayOfWeek_String = getDayOfWeekAsString(dayOfWeek);
+				operatorName = telephonyManager.getNetworkOperatorName();
+				if(mConnectedThread != null){
+					mConnectedThread.write("P;" + hours + ":" + minAsString + ";" + day + "/" + month + "/"
+						+ year + ";" + dayOfWeek_String + ";" + cityToPrint + ";" + name + ";" + backlight + ";" + operatorName + "_");
+					if(UPDATE_NOTIFICATION){
+						try {
+							IN_LOOP = false;
+							Thread.sleep(30000);
+						} catch (InterruptedException e) {
+							e.printStackTrace();
+						}
+						IN_LOOP = true;
+						mConnectedThread.write("A;" + myMessage.get(0).toString()
+											  + ";" + myMessage.get(1).toString() + "_");
+						UPDATE_NOTIFICATION = false;
+					}
+				}
+				try {
+					IN_LOOP = false;
+					Thread.sleep(INTERVAL);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+	}
+
+	private String getDayOfWeekAsString(int dayOfWeek) {
+		if(dayOfWeek == 2)
+			return "MONDAY";
+		if(dayOfWeek == 3)
+			return "TUESDAY";
+		if(dayOfWeek == 4)
+			return "WEDNESDAY";
+		if(dayOfWeek == 5)
+			return "THURSDAY";
+		if(dayOfWeek == 6)
+			return "FRIDAY";
+		if(dayOfWeek == 7)
+			return "SATURDAY";
+		if(dayOfWeek == 1)
+			return "SUNDAY";
+		return "no day";
+	}
+
+	public String getCity() {
+		return city;
+	}
+
+	public void setCity(String city) {
+		this.city = city;
+	}
+
+	public String getOwnerName() {
+		return name;
+	}
+
+	public void setOwnerName(String name) {
+		this.name = name;
+	}
+
+	public int getBacklight() {
+		return backlight;
+	}
+
+	public void setBacklight(int backlight) {
+		this.backlight = backlight;
+		if(mySetting != null){
+			mySetting.setBacklightValue(backlight);
+			db.updateSettings(mySetting);
+		}
+	}
+	
+	public void turnOnFlash(){
+		LOOP_ON = false;
+		try {
+			Thread.sleep(LOOP_OFF_TIME);
+			mConnectedThread.write("on");
+			Thread.sleep(LOOP_OFF_TIME);
+			LOOP_ON = true;
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}		
+	}
+	
+	public void turnOffFlash(){
+		LOOP_ON = false;
+		try {
+			Thread.sleep(LOOP_OFF_TIME);
+			mConnectedThread.write("off");
+			Thread.sleep(LOOP_OFF_TIME);
+			LOOP_ON = true;
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+	}
+
+	public void printHome() {
+		LOOP_ON = false;
+		try {
+			Thread.sleep(LOOP_OFF_TIME);
+			mConnectedThread.write("HOME");
+			Thread.sleep(LOOP_OFF_TIME);
+			LOOP_ON = true;
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+	}
+	
+	public void printCallInfo(String name, String number){
+		LOOP_ON = false;
+		try {
+			Thread.sleep(LOOP_OFF_TIME);
+			mConnectedThread.write("C;" + name + ";" + number + "_");
+			Thread.sleep(LOOP_OFF_TIME);
+			LOOP_ON = true;
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+	}
+
+	public void set_mConnectedThread(ConnectedThread mConnectedThread) {
+		this.mConnectedThread = mConnectedThread;
+	}
+
+	public boolean isLOOP_ON() {
+		return LOOP_ON;
+	}
+
+	public void setLOOP_ON(boolean lOOP_ON) {
+		LOOP_ON = lOOP_ON;
+	}
+
+	public static long getLoopOffTime() {
+		return LOOP_OFF_TIME;
+	}
+
+	public static ArrayList<Message> getMyMessage() {
+		return myMessage;
+	}
+
+	public static void setMyMessage(ArrayList<Message> myMessage) {
+		BluetoothInfoThread.myMessage = myMessage;
+		UPDATE_NOTIFICATION = true;
+	}
+
+	public void setDbHelper(MySQLiteHelper db) {
+		this.db = db;
+	}
+
+	public void setSettings(Settings mySetting) {
+		this.mySetting = mySetting;
+	}
+	
+	
+}

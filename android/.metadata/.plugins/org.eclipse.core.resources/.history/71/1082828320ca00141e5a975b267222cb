@@ -1,0 +1,49 @@
+package com.wpsw.main;
+
+public class Message {
+	private String packageInfo, destInfo;
+
+	public Message(String packageInfo, String destInfo) {
+		super();
+		this.packageInfo = packageInfo;
+		this.destInfo = destInfo;
+	}
+
+	public String getPackageInfo() {
+		return packageInfo;
+	}
+
+	public void setPackageInfo(String packageInfo) {
+		this.packageInfo = packageInfo;
+	}
+
+	public String getDestInfo() {
+		return destInfo;
+	}
+
+	public void setDestInfo(String destInfo) {
+		this.destInfo = destInfo;
+	}
+	
+	public String toString(){
+		String toReturn = packageInfo.replace("com.", "") + "-";
+		toReturn = toReturn.replace("google.gm", "Gmail");
+		toReturn = toReturn.replace("android.", "");
+		toReturn = toReturn.replace("Messaggio da", "Mess.");
+		toReturn = toReturn.replace(".orca", "");
+		toReturn = toReturn.replace(".katana", "");
+		toReturn = toReturn.replace("vending", "update");
+		toReturn = toReturn.replace("Chiamata", "Chiam.");
+		toReturn = toReturn.replace("sec.app.clockpackage", "clock");
+		toReturn = toReturn + destInfo;
+		toReturn = toReturn.replace("à", "a'");
+		toReturn = toReturn.replace("è", "e'");
+		toReturn = toReturn.replace("ì", "i'");
+		toReturn = toReturn.replace("ò", "o'");
+		toReturn = toReturn.replace("ù", "u'");
+		if(toReturn.length()>28){
+			return toReturn.substring(0, 27) +".";
+		}
+		return toReturn;
+	}
+}

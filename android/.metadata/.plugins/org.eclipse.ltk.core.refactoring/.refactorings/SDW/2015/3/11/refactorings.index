@@ -1,0 +1,12 @@
+1426078058153	Delete elements
+1426078070953	Delete elements
+1426078387071	Delete element
+1426140889537	Delete element
+1426181266628	Delete element
+1426181294060	Delete element
+1426181296127	Delete element
+1426181511164	Delete element
+1426320173384	Rename package 'com.wpsw.main'
+1426320787791	Extract method 'connectToDevice'
+1426323373121	Extract method 'reconnecting'
+1426325484726	Extract method 'updateGuiConnectionInfo'
